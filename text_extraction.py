@@ -48,9 +48,9 @@ def extract_toc(file_stream: BinaryIO) -> List[Dict]:
     pageid_to_num = {page.pageid: i + 1 for i, page in enumerate(all_pages)}
             
     outlines = document.get_outlines()
-    for (level, title, dest, a, se) in outlines:
+    for (level, title, dest, action, se) in outlines:
         
-        page_num = None
+        page_info = '[Container]' # Default for non-linking entries
         if dest:
             try:
                 # resolve_dest returns a tuple like (page_id, spec, arg1, arg2, ...)
@@ -59,14 +59,27 @@ def extract_toc(file_stream: BinaryIO) -> List[Dict]:
                         
                 # Look up the page number from our pre-built map
                 if page_id in pageid_to_num:
-                    page_num = pageid_to_num[page_id]
+                    page_info = pageid_to_num[page_id]
                             
             except (PDFException, IndexError) as e:
                 # Some destinations might not resolve correctly or might be invalid
                 print(f"Warning: Could not resolve destination for '{title}'. Error: {e}")
-                page_num = "N/A" # Or None, or however you want to handle it
-                        
-        toc_list.append({"level": level, "title": title, "page": page_num})  
+                page_info = "[Unresolved Destination]" # Or None, or however you want to handle it
+        elif action:
+            # If there's an action, check if it's a URI
+            # action is a dictionary, e.g., {'S': /'URI', 'URI': b'http://example.com'}
+            if isinstance(action, dict):
+                action_type = action.get('S')
+                if action_type and action_type.name == 'URI':
+                    uri = action.get('URI')
+                    # URI can be bytes, so decode it
+                    page_info = f"URI: {uri.decode('utf-8') if isinstance(uri, bytes) else uri}"
+                else:
+                    page_info = f"[Action: {action_type.name if hasattr(action_type, 'name') else 'Unknown'}]"
+            else:
+                page_info = '[Unknown Action]'
+                                        
+        toc_list.append({"level": level, "title": title, "page": page_info})  
                           
     return toc_list
 def find_pages_with_keyword(keyword: str, case_sensitive: bool = False) -> List[int]:
