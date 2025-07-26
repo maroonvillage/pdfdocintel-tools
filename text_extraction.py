@@ -4,6 +4,11 @@ from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfpage import PDFPage
 from pdfminer.pdftypes import PDFException
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfpage import PDFPage
+from pdfminer.layout import LAParams
+from pdfminer.converter import PDFPageAggregator
 
 ########################################################################
 #Document Navigation & Inspection Tools
@@ -104,12 +109,30 @@ def extract_toc(file_stream: BinaryIO) -> List[Dict]:
         toc_list.append({"level": level, "title": title, "page": page_info})  
                           
     return toc_list
-def find_pages_with_keyword(keyword: str, case_sensitive: bool = False) -> List[int]:
+def find_pages_with_keyword(keyword: str,  total_pages: int, file_stream: BinaryIO,start_page: int = 0, page_limit: int = 500, case_sensitive: bool = False) -> List[int]:
     """
     Finds pages containing the specified keyword.
     Returns a list of page numbers.
     """
-    return []
+    keyword_pages = []
+    page_numbers = set(range(start_page, min(total_pages,page_limit))) # Limit to the first 500 pages by default
+    
+    resource_manager = PDFResourceManager()
+    laparams = LAParams()
+    device = PDFPageAggregator(resource_manager, laparams=laparams)
+    interpreter = PDFPageInterpreter(resource_manager, device)
+    
+    for page_number, page in enumerate(PDFPage.get_pages(file_stream, pagenos=page_numbers)):
+        interpreter.process_page(page)
+        layout = device.get_result()  
+        for element in layout:
+            if hasattr(element, 'get_text'):
+                text = element.get_text()
+                if (case_sensitive and keyword in text) or (not case_sensitive and keyword.lower() in text.lower()):
+                    keyword_pages.append(page_number + 1)
+                      
+    return keyword_pages
+
 def identify_toc_candidate_lines(page_number: int) -> List[Dict]:
     """
     Identifies candidate lines for the Table of Contents on the specified page.

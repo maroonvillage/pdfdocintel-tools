@@ -17,7 +17,11 @@ def main(file_path: str):
     print("Calculating total page count...")
     total_pages = te.get_total_page_count(file_stream)
     print(f"Total pages in document: {total_pages}")
-        
+    
+    keyword_page_list = te.find_pages_with_keyword("Transparency", total_pages, file_stream)
+    print(f"Pages with 'Executive Summary': {keyword_page_list}")    
+    
+    
 if __name__ == "__main__":
     
     file_path = "tests/files/AI_Risk_Management_NIST_AI_100_1.pdf"
