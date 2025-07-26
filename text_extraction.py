@@ -8,11 +8,33 @@ from pdfminer.pdftypes import PDFException
 ########################################################################
 #Document Navigation & Inspection Tools
 ########################################################################
-def get_total_page_count() -> int: 
+def get_total_page_count(file_stream: BinaryIO) -> int: 
     """
     Returns the total number of pages in the document.
     """
-    return 0
+    try:
+        #start_page = 0
+        parser = PDFParser(file_stream)
+        pdf_document = PDFDocument(parser)
+        # Attempt graceful handling of incorrect pages
+        total_pages = 0
+        try:
+            total_pages = len(list(PDFPage.create_pages(pdf_document)))
+        except Exception as ex:
+            print("Could not get all pages, document malformed.")
+                        
+        #page_numbers = set(range(start_page, min(total_pages,500))) # Limit to the first 500 pages
+    except FileNotFoundError as e:
+        print(f"get_total_page_count - {e}")
+        raise
+    except AttributeError as e:
+        print(f"AttributeError in get_total_page_count - {e}")
+        raise
+    except Exception as e:
+        print(f"An error occurred during JSON conversion: {e}")
+        raise
+                
+    return total_pages
 
 def get_text_from_page(page_number: int) -> str:
     """

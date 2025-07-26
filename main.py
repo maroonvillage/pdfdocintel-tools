@@ -13,6 +13,10 @@ def main(file_path: str):
     toc_list = te.extract_toc(file_stream)
     for toc in toc_list:
         print(toc)
+    
+    print("Calculating total page count...")
+    total_pages = te.get_total_page_count(file_stream)
+    print(f"Total pages in document: {total_pages}")
         
 if __name__ == "__main__":
     
