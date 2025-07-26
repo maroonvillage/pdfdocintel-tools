@@ -23,6 +23,14 @@ def main(file_path: str):
     keyword_page_list = te.find_pages_with_keyword("Transparency", file_stream)
     print(f"Pages with 'Transparency': {keyword_page_list}")    
     
+    file_stream.seek(0)  # Reset stream position after reading keyword pages
+    
+    headers_footer_dict = te.find_headers_and_footers(file_stream)
+    print("Extracted Headers and Footers:")
+    print(headers_footer_dict['headers'])
+    #for page_num, header_footer in headers_footer_dict.items():
+    #    print(f"Page {page_num}: Header: {header_footer['header']}, Footer: {header_footer['footer']}")
+    
     
 if __name__ == "__main__":
     

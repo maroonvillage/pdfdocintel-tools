@@ -1,5 +1,6 @@
 #from image import Image
 from typing import List, Dict, BinaryIO, Iterator, Set
+from collections import Counter
 from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfpage import PDFPage
@@ -213,6 +214,76 @@ def find_potential_headers(page_number: int) -> List[Dict]:
     Returns a list of dictionaries with potential header metadata.
     """
     return []
+
+def find_headers_and_footers(
+    file_stream: BinaryIO,
+    scan_pages: int = 10,
+    top_margin: float = 0.90,
+    bottom_margin: float = 0.10,
+    min_occurrence: int = 3
+) -> dict:
+    """
+    Analyzes the first few pages of a PDF to identify common headers and footers.
+
+    Args:
+        file_stream (BinaryIO): The binary file stream of the PDF.
+        scan_pages (int): The number of pages to scan to find patterns.
+        top_margin (float): The vertical threshold for the header (e.g., 0.90 means top 10%).
+        bottom_margin (float): The vertical threshold for the footer (e.g., 0.10 means bottom 10%).
+        min_occurrence (int): The minimum number of times text must appear to be considered.
+
+    Returns:
+        dict: A dictionary with 'headers' and 'footers' keys, containing lists
+              of common text elements found.
+    """
+    resource_manager = PDFResourceManager()
+    laparams = LAParams()
+    device = PDFPageAggregator(resource_manager, laparams=laparams)
+    interpreter = PDFPageInterpreter(resource_manager, device)
+    
+    potential_elements = Counter()
+    
+    # Use enumerate to get a page index for the scan limit
+    for i, page in enumerate(PDFPage.get_pages(file_stream, check_extractable=False)):
+        if i >= scan_pages:
+            break
+            
+        page_height = page.mediabox[3] # [x0, y0, x1, y1]
+        header_y_threshold = page_height * top_margin
+        footer_y_threshold = page_height * bottom_margin
+        
+        interpreter.process_page(page)
+        layout = device.get_result()
+        
+        for element in _iter_layout_elements(layout):
+            text = element.get_text().strip()
+            if not text:
+                continue
+
+            # Check if element is in header or footer zone
+            if element.y1 > header_y_threshold or element.y0 < footer_y_threshold:
+                # Use a simplified, rounded position for grouping
+                y_pos_bucket = round(element.y0 / 10) * 10
+                potential_elements[(text, y_pos_bucket)] += 1
+                
+    # Filter for elements that occurred frequently
+    result = {"headers": [], "footers": []}
+    
+    # Re-get the height of the first page for classification
+    file_stream.seek(0)
+    first_page = next(PDFPage.get_pages(file_stream))
+    page_height = first_page.mediabox[3]
+    footer_y_threshold = page_height * bottom_margin
+
+    for (text, y_pos), count in potential_elements.items():
+        if count >= min_occurrence:
+            if y_pos > footer_y_threshold:
+                result["headers"].append(text)
+            else:
+                result["footers"].append(text)
+                
+    return result
+
 def get_text_between_y_coordinates(page_number: int, start_y: float, end_y: float) -> str:
     """
     Returns text content between specified Y coordinates on the page.
