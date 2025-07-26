@@ -1,5 +1,5 @@
 #from image import Image
-from typing import List, Dict, BinaryIO
+from typing import List, Dict, BinaryIO, Iterator, Set
 from pdfminer.pdfparser import PDFParser
 from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfpage import PDFPage
@@ -9,6 +9,7 @@ from pdfminer.pdfdocument import PDFDocument
 from pdfminer.pdfpage import PDFPage
 from pdfminer.layout import LAParams
 from pdfminer.converter import PDFPageAggregator
+from pdfminer.layout import LTTextContainer, LTPage
 
 ########################################################################
 #Document Navigation & Inspection Tools
@@ -60,6 +61,18 @@ def get_text_blocks_with_metadata(page_number: int) -> List[Dict]:
 ########################################################################
 #Table of Contents Specific Tools
 ########################################################################
+def _iter_layout_elements(layout: LTPage) -> Iterator[LTTextContainer]:
+    """
+    A recursive generator to iterate through all text-containing elements
+    in a PDF page layout.
+    """
+    for element in layout:
+        if isinstance(element, LTTextContainer):
+            yield element
+        # If the element is a container, recurse into it
+        elif hasattr(element, '_objs'):
+            yield from _iter_layout_elements(element)
+            
 def extract_toc(file_stream: BinaryIO) -> List[Dict]:
     """
     Extracts the Table of Contents from the document.
@@ -109,29 +122,68 @@ def extract_toc(file_stream: BinaryIO) -> List[Dict]:
         toc_list.append({"level": level, "title": title, "page": page_info})  
                           
     return toc_list
-def find_pages_with_keyword(keyword: str,  total_pages: int, file_stream: BinaryIO,start_page: int = 0, page_limit: int = 500, case_sensitive: bool = False) -> List[int]:
+
+def find_pages_with_keyword(
+    keyword: str,
+    file_stream: BinaryIO,
+    start_page: int = 1,
+    end_page: int = None,
+    case_sensitive: bool = False
+) -> List[int]:
     """
-    Finds pages containing the specified keyword.
-    Returns a list of page numbers.
+    Finds pages containing a specified keyword in a PDF.
+
+    This version is more robust, efficient, and has a clearer API.
+
+    Args:
+        keyword (str): The keyword to search for.
+        file_stream (BinaryIO): The binary file stream of the PDF.
+        start_page (int): The 1-based page number to start searching from. Defaults to 1.
+        end_page (int): The 1-based page number to end searching at (inclusive). 
+                          Defaults to the end of the document.
+        case_sensitive (bool): Whether the search should be case-sensitive.
+
+    Returns:
+        List[int]: A sorted list of 1-based page numbers where the keyword was found.
     """
-    keyword_pages = []
-    page_numbers = set(range(start_page, min(total_pages,page_limit))) # Limit to the first 500 pages by default
+    found_pages: Set[int] = set()
     
+    # Prepare the keyword for searching to avoid repeated processing in the loop
+    search_keyword = keyword if case_sensitive else keyword.lower()
+    
+    # Setup pdfminer resources
     resource_manager = PDFResourceManager()
     laparams = LAParams()
     device = PDFPageAggregator(resource_manager, laparams=laparams)
     interpreter = PDFPageInterpreter(resource_manager, device)
-    
-    for page_number, page in enumerate(PDFPage.get_pages(file_stream, pagenos=page_numbers)):
+
+     # Use enumerate to get a reliable 0-based page index
+    for i, page in enumerate(PDFPage.get_pages(file_stream, check_extractable=False)):
+        current_page_num_0_indexed = i
+        
+        # --- THIS IS THE FIX ---
+        # Filter pages based on the start_page and end_page parameters
+        if current_page_num_0_indexed < start_page - 1:
+            continue
+        if end_page is not None and current_page_num_0_indexed >= end_page:
+            break # We've passed the desired page range, so we can stop
+
         interpreter.process_page(page)
-        layout = device.get_result()  
-        for element in layout:
-            if hasattr(element, 'get_text'):
-                text = element.get_text()
-                if (case_sensitive and keyword in text) or (not case_sensitive and keyword.lower() in text.lower()):
-                    keyword_pages.append(page_number + 1)
-                      
-    return keyword_pages
+        layout = device.get_result()
+        
+        # Use the recursive iterator to find all text elements
+        for element in _iter_layout_elements(layout):
+            text = element.get_text()
+            element_text = text if case_sensitive else text.lower()
+            
+            if search_keyword in element_text:
+                # Add the 1-based page number to our set
+                found_pages.add(current_page_num_0_indexed + 1)
+                # Found it on this page, no need to check other elements
+                break 
+
+    return sorted(list(found_pages))
+
 
 def identify_toc_candidate_lines(page_number: int) -> List[Dict]:
     """
