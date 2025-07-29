@@ -3,3 +3,4 @@ __pycache__/*.pyc
 tests/__pycache__/*.pyc
 utils/__pycache__/*.pyc
 tests/files/*
+detected_tables.png
